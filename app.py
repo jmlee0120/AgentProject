@@ -1,5 +1,7 @@
 import streamlit as st
 import os
+import shutil
+import hashlib
 from rag_module import create_rag_chain, query_expansion, add_confidence_score
 
 # ---------------------------
@@ -221,15 +223,55 @@ with st.sidebar:
 # ---------------------------
 # Main Logic
 # ---------------------------
+
+# 🆕 파일 변경 감지 로직
 if uploaded_file:
     temp_path = f"temp_{uploaded_file.name}"
+# 🆕 파일 변경 감지 로직
+if uploaded_file:
+    temp_path = f"temp_{uploaded_file.name}"
+    
+    # 파일 내용의 해시값 계산 (파일 내용이 정말 다른지 확인)
+    file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
+    
+    # 이전 파일과 현재 파일이 다른지 확인
+    file_changed = False
+    if "current_file_hash" not in st.session_state:
+        st.session_state.current_file_hash = None
+        st.session_state.current_file_name = None
+    
+    # 파일이 변경되었는지 확인 (해시값으로 정확히 감지)
+    if st.session_state.current_file_hash != file_hash:
+        file_changed = True
+        st.session_state.current_file_hash = file_hash
+        st.session_state.current_file_name = uploaded_file.name
+        
+        # 이전 rag_chain과 messages 삭제
+        if "rag_chain" in st.session_state:
+            del st.session_state.rag_chain
+        st.session_state.messages = []
+        
+        # 이전 임시 파일 정리
+        import glob
+        for old_file in glob.glob("temp_*"):
+            try:
+                os.remove(old_file)
+            except:
+                pass
+    
+    # 임시 파일 저장
     with open(temp_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
+    # RAG Chain 생성 (새 파일이거나 rag_chain이 없을 때)
     if "rag_chain" not in st.session_state:
         with st.status("🚀 AI가 지식 베이스를 생성하고 있습니다...", expanded=True) as status:
             st.session_state.rag_chain = create_rag_chain(temp_path)
             status.update(label="준비 완료! 질문을 입력하세요.", state="complete", expanded=False)
+        
+        # 새 파일 로드 시 알림
+        if file_changed and st.session_state.current_file_name:
+            st.info(f"✅ '{uploaded_file.name}' 파일을 기반으로 업데이트되었습니다. 이전 대화 기록은 초기화됩니다.")
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -271,6 +313,13 @@ if uploaded_file:
                 st.markdown(full_response)
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})
+    
+    # 정리: 임시 파일 삭제 (옵션)
+    if os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except:
+            pass
 
 else:
     # Landing Page
