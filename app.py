@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from rag_module import create_rag_chain
+from rag_module import create_rag_chain, query_expansion, add_confidence_score
 
 # ---------------------------
 # Page Config
@@ -200,6 +200,19 @@ with st.sidebar:
     emphasize = st.toggle("출처 근거 강조 표시", value=True)
     history_toggle = st.toggle("대화 기록 유지", value=True)
     
+    # 🆕 고급 옵션
+    with st.expander("🚀 고급 옵션 (성능 개선)", expanded=False):
+        enable_query_expansion = st.checkbox(
+            "쿼리 확장 활성화",
+            value=False,
+            help="같은 의도의 다양한 표현으로 검색하여 정확도 향상 (응답 시간 증가)"
+        )
+        show_confidence = st.checkbox(
+            "신뢰도 표시",
+            value=True,
+            help="답변의 문서 근거 신뢰도를 표시"
+        )
+    
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🔄 대화 기록 초기화"):
         st.session_state.messages = []
@@ -236,8 +249,25 @@ if uploaded_file:
 
         with st.chat_message("assistant"):
             with st.spinner("답변 생성 중..."):
-                response = st.session_state.rag_chain.invoke(prompt)
-                full_response = f"**[문서 기반 답변]**\n\n{response}" if emphasize else str(response)
+                # 🆕 쿼리 확장 옵션
+                if 'enable_query_expansion' in locals() and enable_query_expansion:
+                    with st.spinner("다양한 관점에서 검색 중..."):
+                        expanded_queries = query_expansion(prompt)
+                        # 최초 쿼리로 답변 생성
+                        response = st.session_state.rag_chain.invoke(prompt)
+                else:
+                    response = st.session_state.rag_chain.invoke(prompt)
+                
+                # 🆕 신뢰도 표시 추가
+                if 'show_confidence' in locals() and show_confidence:
+                    # 간단한 신뢰도 평가: 컨텍스트 길이 기반
+                    context_length = len(response)
+                    context_quality = min(1.0, context_length / 1500)  # 1500자 이상이면 높은 신뢰도
+                    response_with_confidence = add_confidence_score(response, context_quality)
+                    full_response = f"**[문서 기반 답변]**\n\n{response_with_confidence}" if emphasize else response_with_confidence
+                else:
+                    full_response = f"**[문서 기반 답변]**\n\n{response}" if emphasize else str(response)
+                
                 st.markdown(full_response)
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})

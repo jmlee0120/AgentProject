@@ -16,15 +16,15 @@ load_dotenv()
 # =========================
 # 파라미터 조정 (파일 내부 수정 방식)
 # =========================
-CHUNK_SIZE = 800 # 한 조각에 담기는 문맥의 길이 (너무 크면 LLM 입력 제한 걸림)
-CHUNK_OVERLAP = 120  # 청크를 자를 때 겹치는 부분 (문맥 단절 최소화 목적)
+CHUNK_SIZE = 1000  # 한 조각에 담기는 문맥의 길이 (충분한 맥락을 담기 위해 확대)
+CHUNK_OVERLAP = 200  # 청크를 자를 때 겹치는 부분 (문맥 단절 최소화 + 연결성 강화)
 
-RETRIEVER_K = 6  # 최종적으로 LLM에 넣을 청크 개수 / 너무 작으면 근거 부족
-RETRIEVER_FETCH_K = 40 # 후보로 더 많이 뽑아놓고 그중에서 다양하게 고르는 폭
-RETRIEVER_LAMBDA = 0.5  # 유사도 vs 다양성 균형 조정 (0~1, 1에 가까울수록 유사도 편중)
+RETRIEVER_K = 10  # 최종적으로 LLM에 넣을 청크 개수 (더 풍부한 근거)
+RETRIEVER_FETCH_K = 60  # 후보로 더 많이 뽑아놓고 그중에서 다양하게 고르는 폭
+RETRIEVER_LAMBDA = 0.6  # 유사도 vs 다양성 균형 조정 (더 높은 유사도 비중)
 
 MODEL_NAME = "gpt-4o"
-TEMPERATURE = 0
+TEMPERATURE = 0.1  # 약간의 창의성으로 자연스러운 한국어 표현
 # =========================
 
 
@@ -79,43 +79,40 @@ def create_rag_chain(pdf_path: str):
 
     
     # 1) QA 프롬프트 (문서 근거 기반)
-    qa_template = """
-너는 '월드비전 사내 문서' 기반 Q&A 어시스턴트야.
-아래 <Context>에 포함된 내용만 근거로 답해. 외부지식/추측/인터넷 정보는 절대 사용하지 마.
+    qa_template = """당신은 '월드비전 사내 문서' 기반 Q&A 어시스턴트입니다.
+아래 <Context>에 포함된 내용만 근거로 답하세요. 외부지식/추측/인터넷 정보는 절대 사용하지 마세요.
 
-[규칙]
-1) <Context>에 근거가 없으면 답을 만들지 말고 "문서에서 확인되지 않음"이라고 말해.
-2) 사용자의 질문 의도를 문서 관점에서 재구성해서(한 줄) 먼저 제시해.
-3) 답변은 사용자가 바로 행동/결정할 수 있게 정리해. 단, 문서에 있는 범위에서만.
-4) 근거에는 p.번호를 포함해.
-5) 질문이 모호해도, 문서에 관련될 수 있는 항목들을 묶어서 제시하고,
-   정말로 핵심 정보가 부족할 때만 확인 질문을 1~2개만 해.
+[핵심 규칙]
+1. <Context>에 근거가 없으면 답을 만들지 말고 "문서에서 확인되지 않음"이라고 명확히 말할 것
+2. 사용자의 질문 의도를 정확히 이해한 후 한 줄로 재구성 제시
+3. 답변은 사용자가 바로 이해하고 행동/결정할 수 있도록 구조화할 것
+4. 모든 근거에는 p.(페이지번호)를 포함할 것
+5. 핵심 정보 우선으로, 필요한 경우만 세부사항 추가
+6. 질문이 모호한 경우 문서에서 찾을 수 있는 관련 항목들을 제시
 
-[출력 형식]
-## 질문 의도(재구성)
-- (질문의 목적을 한 줄로 재정의)
+[출력 형식 (엄격히 준수)]
+## 질문 재구성
+(질문의 실제 목적과 의도를 한 문장으로 정의)
 
-## 답변(핵심 결론)
-- (짧게)
+## 핵심 답변
+(직결된 답변, 가장 중요한 정보 먼저)
 
-## 세부 설명(문서 기반 정리)
-- (필요하면 항목화/단계화/조건-예외 형태로 정리)
+## 상세 설명
+(필요한 배경정보, 조건, 예외사항 등 - bullet list 형식)
 
-## 근거(문서기반)
-- (p.번호 포함, 1~4개)
+## 근거 (출처 명시)
+- p.번호: (해당 내용 요약)
+(2~4개의 핵심 근거)
 
-## 추가로 확인하면 좋은 점(문서 범위 내)
-- (문서에 존재하는 체크포인트/필요 서류/기한/예외 등을 2~5개)
-
-## 문서에서 확인되지 않음
-- (없으면 '없음')
+## 확인하면 좋은 추가 정보
+(문서에 존재하는 관련 체크포인트/서류/기한 등, 있으면 2~3개)
 
 <Context>
 {context}
 
 질문: {question}
 
-한국어로 답변해.
+한국어로 친절하고 명확하게 답변하세요.
 """
 
     qa_prompt = ChatPromptTemplate.from_template(qa_template)
@@ -129,37 +126,36 @@ def create_rag_chain(pdf_path: str):
 
     
     # 2) 요약/정리 프롬프트 (RAG 기반 "보고서" 요약)
-    #    ※ 문서 전체를 완벽히 페이지 순서로 훑는 게 아니라,
-    #      retriever가 뽑아준 컨텍스트 기반으로 정리하는 모드
-    summary_template = """
-너는 월드비전 사내 문서를 '요약·정리·보고'하는 AI 어시스턴트야.
-아래 <Context>에 포함된 내용만 근거로 사용해. 외부지식/추측/인터넷 정보는 절대 사용하지 마.
+    summary_template = """당신은 월드비전 사내 문서를 구조적으로 '요약·정리·보고'하는 AI 어시스턴트입니다.
+아래 <Context>에 포함된 내용만 근거로 사용하세요. 외부지식/추측/인터넷 정보는 절대 사용하지 마세요.
 
-[규칙]
-1) <Context>에 근거가 없는 내용은 절대 만들어내지 마.
-2) 문서에 없는 내용은 "문서에서 확인되지 않음"에 넣어.
-3) 보고서처럼 깔끔하고 구조적으로 작성해.
-4) 가능하면 p.번호를 언급해.
+[핵심 규칙]
+1. <Context>에 근거가 없는 내용은 절대 추가하지 말 것
+2. 문서에 없는 내용은 "문서에서 확인되지 않음"에 명시할 것
+3. 보고서처럼 깔끔하고 구조적으로 작성
+4. 가능하면 p.번호를 함께 표기
+5. 사용자의 요청 관점에 맞춰 핵심 정보 우선 정렬
 
-[출력 형식]
-## 문서 핵심요약
-- (3~6개)
+[출력 형식 (엄격히 준수)]
+## 📋 핵심 요약 (3~5개)
+- (가장 중요한 내용부터 단계별로)
 
-## 상세정리
-- (요청한 관점/항목 기준으로 체계적으로 정리)
+## 📊 상세 정리
+(사용자 요청 관점으로 체계적 정리)
 
-## 근거(문서기반)
-- (근거 요약 + p.번호, 2~6개)
+## 🔍 문서 기반 근거
+- p.번호: (내용요약)
+(2~5개의 주요 근거)
 
-## 문서에서 확인되지 않음
-- (없으면 '없음')
+## ❓ 문서에서 확인되지 않음
+(없으면 '없음')
 
 <Context>
 {context}
 
 사용자 요청: {question}
 
-한국어로 답변해.
+한국어로 친절하고 명확하게 작성하세요.
 """
     summary_prompt = ChatPromptTemplate.from_template(summary_template)
 
@@ -172,20 +168,24 @@ def create_rag_chain(pdf_path: str):
 
     
     # 3) 페이지별 요약 모드 (read-all, 누락 최소화)
-    #    ※ "페이지별로 핵심 요약" 요청일 때는 retriever를 쓰지 않고
-    #      전체 페이지를 순서대로 읽어서 요약함.
-    page_prompt = ChatPromptTemplate.from_template("""
-너는 업로드된 문서의 '해당 페이지'만 요약하는 어시스턴트야.
-외부지식/추측/인터넷 정보는 절대 사용하지 마. 이 페이지에 없는 내용은 쓰지 마.
+    page_prompt = ChatPromptTemplate.from_template("""당신은 업로드된 문서의 '해당 페이지'만 정확히 요약하는 어시스턴트입니다.
+이 페이지에 없는 내용은 절대 쓰지 마세요. 외부지식/추측/인터넷 정보도 사용하지 마세요.
 
 [출력 형식]
-- 핵심 요지 3개
-- 중요한 규정/절차/수치/예외/주의사항(있으면 bullet)
+## 핵심 요지 (3가지)
+1. (가장 중요한 내용)
+2. (부가 정보)
+3. (주의/예외사항)
+
+## 중요 규정·절차·수치·주의사항
+- 항목 1
+- 항목 2
+(있으면 2~4개)
 
 페이지 내용:
 {page_text}
 
-한국어로 작성:
+한국어로 명확하게 작성하세요.
 """)
 
     def summarize_pages_to_text(_question: str) -> str:
@@ -244,3 +244,95 @@ def create_rag_chain(pdf_path: str):
     )
 
     return rag_chain
+
+# =========================
+# 추가 유틸리티 함수 (v2.3+)
+# =========================
+
+def query_expansion(query: str) -> list[str]:
+    """
+    사용자의 원본 질문을 여러 관점에서 재구성하여
+    검색 정확도를 높입니다. (Hybrid Search 기초)
+    """
+    llm = ChatOpenAI(model_name=MODEL_NAME, temperature=0.7)
+    
+    expansion_prompt = ChatPromptTemplate.from_template("""
+당신은 사용자의 질문을 다양한 관점에서 재구성하는 전문가입니다.
+
+원본 질문: {query}
+
+아래 5가지 관점에서 각각 다시 쓰세요. 한 줄씩만.
+1. 직설적 표현 (원문과 거의 같되, 더 명확하게)
+2. 관련 개념 포함 (동의어, 유사 개념을 섞어서)
+3. 배경/맥락 강화 (why/how를 포함해서)
+4. 실무 관점 (실제 업무 상황에서 어떻게 쓰일지)
+5. 역질문 (핵심 의도를 역으로 표현)
+
+형식: 마크다운 번호 리스트로, 각 항목은 한 줄씩만 제공하세요.
+""")
+    
+    chain = expansion_prompt | llm | StrOutputParser()
+    result = chain.invoke({"query": query})
+    
+    # 응답을 리스트로 파싱
+    lines = [line.strip() for line in result.split('\n') if line.strip() and line[0].isdigit()]
+    queries = [line.split('. ', 1)[-1] if '. ' in line else line for line in lines]
+    
+    return [query] + queries[:4]  # 원본 + 4가지
+
+
+def rerank_results(query: str, retrieved_docs: list, llm=None) -> list:
+    """
+    검색된 문서들을 사용자 질문과의 관련성으로 재정렬합니다.
+    (답변 품질 향상)
+    """
+    if llm is None:
+        llm = ChatOpenAI(model_name=MODEL_NAME, temperature=0)
+    
+    if not retrieved_docs:
+        return retrieved_docs
+    
+    rerank_prompt = ChatPromptTemplate.from_template("""
+당신은 문서 관련성 평가 전문가입니다.
+
+질문: {query}
+
+아래 문서들을 질문과의 관련도로 정렬하세요.
+가장 관련도 높은 것부터 순서대로 인덱스만 제공하세요. (예: 2, 0, 3, 1)
+
+{docs_text}
+""")
+    
+    # 문서 텍스트 준비
+    docs_text = "\n\n".join([
+        f"[Index {i}] (p.{doc.metadata.get('page', '?')})\n{doc.page_content[:200]}..."
+        for i, doc in enumerate(retrieved_docs[:10])  # 상위 10개만
+    ])
+    
+    chain = rerank_prompt | llm | StrOutputParser()
+    result = chain.invoke({"query": query, "docs_text": docs_text})
+    
+    # 결과 파싱
+    try:
+        indices = [int(x.strip()) for x in result.split(',') if x.strip().isdigit()]
+        return [retrieved_docs[i] for i in indices if i < len(retrieved_docs)]
+    except:
+        return retrieved_docs  # 파싱 실패시 원본 반환
+
+
+def add_confidence_score(response: str, context_quality: float) -> str:
+    """
+    LLM의 답변에 신뢰도 점수를 표기합니다.
+    
+    Args:
+        response: LLM 답변
+        context_quality: 0~1 사이의 문맥 품질 점수
+    """
+    if context_quality > 0.8:
+        badge = "✅ **높은 신뢰도** (충분한 문서 근거)"
+    elif context_quality > 0.5:
+        badge = "⚠️ **중간 신뢰도** (제한된 근거)"
+    else:
+        badge = "❌ **낮은 신뢰도** (불충분한 근거)"
+    
+    return f"{badge}\n\n{response}"
