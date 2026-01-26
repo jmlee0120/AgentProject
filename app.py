@@ -30,89 +30,83 @@ CUSTOM_CSS = """
     }
     
     .block-container {
-        padding-top: 2rem !important;
-        max-width: 1100px;
+        padding-top: 1rem !important;
+        max-width: 1200px;
     }
-
-    /* Sidebar - Base */
-    section[data-testid="stSidebar"] {
-        background-color: #1e293b !important;
-    }
-    
-    /* 사이드바 일반 텍스트 및 라벨 (흰색) */
-    section[data-testid="stSidebar"] .stMarkdown, 
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] span {
-        color: #ffffff !important;
-    }
-
-    /* --- 파일 업로더 가독성 및 공간 최적화 --- */
-    
-    /* 1. 업로더 박스 슬림화 및 배경 고정 */
-    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] {
-        padding: 1rem !important;
-        border: 2px dashed #cbd5e1 !important;
-        background-color: #ffffff !important;
-        border-radius: 12px !important;
-        min-height: 140px !important;
-    }
-
-    /* 2. 'Browse files' 버튼: 어두운 배경으로 대비 강화 */
-    section[data-testid="stSidebar"] [data-testid="stFileUploader"] button {
-        color: #ffffff !important;
-        background-color: #1e293b !important;
-        border: none !important;
-        padding: 0.4rem 1rem !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-    }
-
-    /* 3. 내부 안내 문구 (Drag and drop...) - 검정색 강제 적용 */
-    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] div[data-testid="stMarkdownContainer"] p {
-        color: #000000 !important;
-        font-size: 0.85rem !important;
-        font-weight: 700 !important;
-    }
-
-    /* 4. 내부 아이콘 및 기타 텍스트 가독성 */
-    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] svg {
-        fill: #1e293b !important;
-    }
-    
-    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] small {
-        color: #475569 !important;
-        font-weight: 500 !important;
-    }
-    /* --------------------------------------- */
 
     /* Main Header */
     .main-header {
-        background-color: #ffffff;
-        padding: 1.8rem 2.2rem;
-        border-radius: 16px;
-        border-bottom: 4px solid #ff6b00;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    position: relative;              /* 추가 */
+    overflow: hidden;                /* 추가 */
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    padding: 1.5rem 2rem;
+    border-radius: 16px;
+    border-bottom: 4px solid #ff6b00;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+    /* 오버레이 추가: 텍스트 대비 안정화 */
+.main-header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.30); /* 0.25~0.4 사이에서 조절 */
+    z-index: 0;
+}
+
+/* header 내부 텍스트가 오버레이 위로 오게 */
+.main-header * {
+    position: relative;
+    z-index: 1;
+}
+
+    .page-nav-buttons {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        gap: 10px;
+        margin-bottom: 2rem;
+        justify-content: center;
     }
     
+    .page-nav-buttons button {
+        padding: 0.7rem 1.5rem !important;
+        border-radius: 12px !important;
+        border: 2px solid #ff6b00 !important;
+        background-color: white !important;
+        color: #ff6b00 !important;
+        font-weight: 700 !important;
+        transition: all 0.3s !important;
+        cursor: pointer;
+    }
+    
+    .page-nav-buttons button:hover {
+        background-color: #ff6b00 !important;
+        color: white !important;
+        transform: translateY(-2px) !important;
+    }
+    
+    .page-nav-buttons button.active {
+        background-color: #ff6b00 !important;
+        color: white !important;
+    }
+
     .header-title {
-        color: #0f172a;
+        color: #ffffff !important;
+        opacity: 1 !important;
         font-size: 1.9rem;
         font-weight: 800;
         margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 12px;
+        text-align: center;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.35); /* 가독성 보조 */
     }
 
     .header-subtitle {
-        color: #475569;
+        color: #d1d5db !important;       /* 흰색보다 살짝 톤다운 */
+        opacity: 1 !important;
         font-size: 0.95rem;
         margin-top: 6px;
+        text-align: center;
+        text-shadow: 0 1px 8px rgba(0,0,0,0.25);
     }
 
     /* Status Card */
@@ -151,188 +145,308 @@ CUSTOM_CSS = """
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(255, 107, 0, 0.3);
     }
+
+    @keyframes rotate {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
+    }
+    
+    .rotating-earth {
+        font-size: 5rem;
+        display: inline-block;
+        animation: rotate 3s linear infinite;
+    }
+    
+    .main-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+    
+    .main-title {
+        color: #0f172a;     /* 또는 #111827 */
+        font-size: 2.5rem;
+        font-weight: 900;
+        text-align: center;
+        margin: 0;
+    }
+    
+    .setup-section {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 2.5rem;
+        max-width: 700px;
+        width: 100%;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        margin: 0 auto;
+    }
+    
+    .setup-title {
+        color: #0f172a;
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin: 0 0 1.5rem 0;
+        text-align: center;
+    }
+    
+    .setup-guide {
+        border-left: 3px solid #ff6b00;
+        padding: 12px 0 12px 15px;
+        margin-bottom: 1.5rem;
+        background: #fff7ed;
+        border-radius: 8px;
+        padding: 15px 15px 15px 15px;
+    }
+    
+    .setup-guide p {
+        font-size: 0.95rem;
+        color: #92400e;
+        margin: 0;
+        line-height: 1.6;
+    }
+
+    .input-form {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .form-section {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+        color: #0f172a;
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
 </style>
 """
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # ---------------------------
-# Top Navigation / Header
+# Session State 초기화
 # ---------------------------
-st.markdown(
-    """
-    <div class="main-header">
-        <div>
-            <h1 class="header-title">🌎 월드비전 사내 AI Assistant</h1>
-            <p class="header-subtitle">World Vision Internal Knowledge Base (RAG v2.3)</p>
-        </div>
-        <div>
-            <span class="badge">보안등급: 사내전용</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "문서 챗봇"
+
+if "emphasize" not in st.session_state:
+    st.session_state.emphasize = True
+if "show_confidence" not in st.session_state:
+    st.session_state.show_confidence = True
+if "enable_query_expansion" not in st.session_state:
+    st.session_state.enable_query_expansion = False
 
 # ---------------------------
-# Sidebar: File Management
+# Header with Page Navigation
 # ---------------------------
-with st.sidebar:
-    st.markdown("### 📄 문서 라이브러리")
-    
-    # 텅 빈 공간을 채워줄 가이드 박스
+col1, col2, col3 = st.columns([1, 2, 1])
+
+with col2:
     st.markdown(
         """
-        <div style="border-left: 3px solid #ff6b00; padding: 2px 0 2px 12px; margin-bottom: 15px;">
-            <p style="font-size: 0.82rem; color: #cbd5e1; margin: 0; line-height: 1.5;">
-                <b>PDF 문서를 업로드하면</b><br>AI가 내용을 학습하여 답변합니다.
-            </p>
+        <div class="main-header">
+            <h1 class="header-title">🌎 월드비전 AI ASSISTANT</h1>
+            <p class="header-subtitle">World Vision AI Assistant Platform</p>
         </div>
-        """, 
+        """,
+        unsafe_allow_html=True
+    )
+
+# 페이지 선택 버튼
+pages = ["문서 챗봇", "보고서 작성기", "이메일 Assistant"]
+page_cols = st.columns(3)
+
+for idx, page in enumerate(pages):
+    with page_cols[idx]:
+        if st.button(
+            f"{'📄 ' if page == '문서 챗봇' else '📝 ' if page == '보고서 작성기' else '✉️ '}{page}",
+            use_container_width=True,
+            key=f"page_btn_{page}"
+        ):
+            st.session_state.current_page = page
+            st.rerun()
+
+st.markdown("---")
+
+# ---------------------------
+# PAGE 1: 문서 챗봇
+# ---------------------------
+if st.session_state.current_page == "문서 챗봇":
+    
+    # 제목 표시
+    st.markdown(
+        """
+        <div class="main-center" style="margin: 1rem 0;">
+            <h1 class="main-title">문서 챗봇</h1>
+        </div>
+        """,
         unsafe_allow_html=True
     )
     
-    uploaded_file = st.file_uploader("", type=["pdf"], label_visibility="collapsed")
+    # File upload at top center
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col2:
+        st.markdown(
+            """
+            <div class="setup-section" style="padding: 2rem;">
+                <h3 class="setup-title">📄 PDF 문서 업로드</h3>
+                <div class="setup-guide">
+                    <p><b>📚 문서를 업로드하면</b><br>AI가 내용을 학습하여 복잡한 질문에도 정확하게 답변합니다.</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        uploaded_file = st.file_uploader("", type=["pdf"], label_visibility="collapsed", key="main_uploader")
     
     if uploaded_file:
-        st.success(f"연결됨: {uploaded_file.name}")
-    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("### ⚙️ 시스템 설정")
-    emphasize = st.toggle("출처 근거 강조 표시", value=True)
-    history_toggle = st.toggle("대화 기록 유지", value=True)
-    
-    # 🆕 고급 옵션
-    with st.expander("🚀 고급 옵션 (성능 개선)", expanded=False):
-        enable_query_expansion = st.checkbox(
-            "쿼리 확장 활성화",
-            value=False,
-            help="같은 의도의 다양한 표현으로 검색하여 정확도 향상 (응답 시간 증가)"
-        )
-        show_confidence = st.checkbox(
-            "신뢰도 표시",
-            value=True,
-            help="답변의 문서 근거 신뢰도를 표시"
-        )
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🔄 대화 기록 초기화"):
-        st.session_state.messages = []
-        st.rerun()
-
-# ---------------------------
-# Main Logic
-# ---------------------------
-
-# 🆕 파일 변경 감지 로직
-if uploaded_file:
-    temp_path = f"temp_{uploaded_file.name}"
-# 🆕 파일 변경 감지 로직
-if uploaded_file:
-    temp_path = f"temp_{uploaded_file.name}"
-    
-    # 파일 내용의 해시값 계산 (파일 내용이 정말 다른지 확인)
-    file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
-    
-    # 이전 파일과 현재 파일이 다른지 확인
-    file_changed = False
-    if "current_file_hash" not in st.session_state:
-        st.session_state.current_file_hash = None
-        st.session_state.current_file_name = None
-    
-    # 파일이 변경되었는지 확인 (해시값으로 정확히 감지)
-    if st.session_state.current_file_hash != file_hash:
-        file_changed = True
-        st.session_state.current_file_hash = file_hash
-        st.session_state.current_file_name = uploaded_file.name
+        temp_path = f"temp_{uploaded_file.name}"
         
-        # 이전 rag_chain과 messages 삭제
-        if "rag_chain" in st.session_state:
-            del st.session_state.rag_chain
-        st.session_state.messages = []
+        # 파일 내용의 해시값 계산
+        file_hash = hashlib.md5(uploaded_file.getvalue()).hexdigest()
         
-        # 이전 임시 파일 정리
-        import glob
-        for old_file in glob.glob("temp_*"):
+        # 이전 파일과 현재 파일이 다른지 확인
+        file_changed = False
+        if "current_file_hash" not in st.session_state:
+            st.session_state.current_file_hash = None
+            st.session_state.current_file_name = None
+        
+        # 파일이 변경되었는지 확인 (해시값으로 정확히 감지)
+        if st.session_state.current_file_hash != file_hash:
+            file_changed = True
+            st.session_state.current_file_hash = file_hash
+            st.session_state.current_file_name = uploaded_file.name
+            
+            # 이전 rag_chain과 messages 삭제
+            if "rag_chain" in st.session_state:
+                del st.session_state.rag_chain
+            st.session_state.messages = []
+            
+            # 이전 임시 파일 정리
+            import glob
+            for old_file in glob.glob("temp_*"):
+                try:
+                    os.remove(old_file)
+                except:
+                    pass
+        
+        # 임시 파일 저장
+        with open(temp_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        # 파일 업로드 상단에 시스템 설정 배치
+        st.markdown("## 📚 업로드된 문서")
+        st.success(f"✅ 연결됨: {uploaded_file.name}")
+        
+        # 파일 업로드 경고
+        st.warning("⚠️ **새 문서 업로드 시 주의사항**\n\n새로운 문서를 업로드하면:\n• 이전 대화 기록이 삭제됩니다\n• 이전 문서 기반 답변은 불가능합니다")
+        
+        st.markdown("---")
+        st.markdown("## ⚙️ 시스템 설정")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.emphasize = st.checkbox("출처 근거 강조 표시", value=st.session_state.emphasize)
+        with col2:
+            st.session_state.show_confidence = st.checkbox("신뢰도 표시", value=st.session_state.show_confidence)
+        
+        with st.expander("🚀 고급 옵션 (성능 개선)", expanded=False):
+            st.session_state.enable_query_expansion = st.checkbox(
+                "쿼리 확장 활성화",
+                value=st.session_state.enable_query_expansion,
+                help="같은 의도의 다양한 표현으로 검색하여 정확도 향상 (응답 시간 증가)"
+            )
+        
+        if st.button("🔄 대화 기록 초기화", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+        
+        st.markdown("---")
+
+        # RAG Chain 생성 (새 파일이거나 rag_chain이 없을 때)
+        if "rag_chain" not in st.session_state:
+            with st.status("🚀 AI가 지식 베이스를 생성하고 있습니다...", expanded=True) as status:
+                st.session_state.rag_chain = create_rag_chain(temp_path)
+                status.update(label="준비 완료! 질문을 입력하세요.", state="complete", expanded=False)
+            
+            # 새 파일 로드 시 알림
+            if file_changed and st.session_state.current_file_name:
+                st.info(f"✅ '{uploaded_file.name}' 파일을 기반으로 업데이트되었습니다. 이전 대화 기록은 초기화됩니다.")
+
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        st.subheader("💬 무엇이든 물어보세요")
+        
+        # Message Display
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        # Chat Input
+        if prompt := st.chat_input("업로드한 문서에 대해 질문하세요..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                with st.spinner("답변 생성 중..."):
+                    # 쿼리 확장 옵션
+                    if st.session_state.enable_query_expansion:
+                        with st.spinner("다양한 관점에서 검색 중..."):
+                            expanded_queries = query_expansion(prompt)
+                            # 최초 쿼리로 답변 생성
+                            response = st.session_state.rag_chain.invoke(prompt)
+                    else:
+                        response = st.session_state.rag_chain.invoke(prompt)
+                    
+                    # 신뢰도 표시 추가
+                    if st.session_state.show_confidence:
+                        # 간단한 신뢰도 평가: 컨텍스트 길이 기반
+                        context_length = len(response)
+                        context_quality = min(1.0, context_length / 1500)  # 1500자 이상이면 높은 신뢰도
+                        response_with_confidence = add_confidence_score(response, context_quality)
+                        full_response = f"**[문서 기반 답변]**\n\n{response_with_confidence}" if st.session_state.emphasize else response_with_confidence
+                    else:
+                        full_response = f"**[문서 기반 답변]**\n\n{response}" if st.session_state.emphasize else str(response)
+                    
+                    st.markdown(full_response)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        
+        # 정리: 임시 파일 삭제 (옵션)
+        if os.path.exists(temp_path):
             try:
-                os.remove(old_file)
+                os.remove(temp_path)
             except:
                 pass
-    
-    # 임시 파일 저장
-    with open(temp_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
 
-    # RAG Chain 생성 (새 파일이거나 rag_chain이 없을 때)
-    if "rag_chain" not in st.session_state:
-        with st.status("🚀 AI가 지식 베이스를 생성하고 있습니다...", expanded=True) as status:
-            st.session_state.rag_chain = create_rag_chain(temp_path)
-            status.update(label="준비 완료! 질문을 입력하세요.", state="complete", expanded=False)
+    else:
+        # Landing Page
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        # 새 파일 로드 시 알림
-        if file_changed and st.session_state.current_file_name:
-            st.info(f"✅ '{uploaded_file.name}' 파일을 기반으로 업데이트되었습니다. 이전 대화 기록은 초기화됩니다.")
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    st.subheader("💬 무엇이든 물어보세요")
-    
-    # Message Display
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Chat Input
-    if prompt := st.chat_input("업로드한 문서에 대해 질문하세요..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("답변 생성 중..."):
-                # 🆕 쿼리 확장 옵션
-                if 'enable_query_expansion' in locals() and enable_query_expansion:
-                    with st.spinner("다양한 관점에서 검색 중..."):
-                        expanded_queries = query_expansion(prompt)
-                        # 최초 쿼리로 답변 생성
-                        response = st.session_state.rag_chain.invoke(prompt)
-                else:
-                    response = st.session_state.rag_chain.invoke(prompt)
-                
-                # 🆕 신뢰도 표시 추가
-                if 'show_confidence' in locals() and show_confidence:
-                    # 간단한 신뢰도 평가: 컨텍스트 길이 기반
-                    context_length = len(response)
-                    context_quality = min(1.0, context_length / 1500)  # 1500자 이상이면 높은 신뢰도
-                    response_with_confidence = add_confidence_score(response, context_quality)
-                    full_response = f"**[문서 기반 답변]**\n\n{response_with_confidence}" if emphasize else response_with_confidence
-                else:
-                    full_response = f"**[문서 기반 답변]**\n\n{response}" if emphasize else str(response)
-                
-                st.markdown(full_response)
-        
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-    
-    # 정리: 임시 파일 삭제 (옵션)
-    if os.path.exists(temp_path):
-        try:
-            os.remove(temp_path)
-        except:
-            pass
-
-else:
-    # Landing Page
-    col1, col2 = st.columns([2, 1])
-    with col1:
+        # 환영 문구
         st.markdown(
             """
             <div class="status-card">
                 <h2 style="margin-top:0;">환영합니다! 👋</h2>
                 <p style="font-size: 1.1rem; color: #334155;"><b>월드비전 사내 AI Assistant</b>는 임직원 여러분의 업무 효율을 위해 개발되었습니다.</p>
                 <p style="color: #64748b; line-height: 1.6;">
-                왼쪽 사이드바에 사내 규정, 가이드라인, 혹은 프로젝트 보고서를 업로드해 보세요.<br>
-                AI가 해당 문서의 내용을 즉시 파악하여 복잡한 질문에도 정확하게 답변해 드립니다.
+                PDF 문서를 업로드하면 AI가 해당 문서의 내용을 즉시 파악하여<br>
+                복잡한 질문에도 정확하게 답변해 드립니다.
                 </p>
                 <div style="margin-top: 30px; padding: 15px; background: #f1f5f9; border-radius: 12px; border-left: 5px solid #cbd5e1;">
                     <span style="color: #475569; font-size: 0.9rem;">📌 <b>개인정보 유의</b>: 본 시스템은 사내 보안망 내에서만 활용하시길 권장합니다.</span>
@@ -341,5 +455,295 @@ else:
             """,
             unsafe_allow_html=True
         )
+
+# ---------------------------
+# PAGE 2: 보고서 작성기
+# ---------------------------
+elif st.session_state.current_page == "보고서 작성기":
+    
+    st.markdown(
+        """
+        <div class="main-center">
+            <div style="font-size: 4rem;">📝</div>
+            <h1 class="main-title">보고서 작성기</h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">📋 보고서 제목</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        report_title = st.text_input("", placeholder="예: 2025년 Q1 프로젝트 성과 보고서", label_visibility="collapsed")
+        
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">📊 보고서 유형</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        report_type = st.selectbox("", 
+            ["프로젝트 보고서", "성과 보고서", "분석 보고서", "재정 보고서", "월간 보고서", "기타"],
+            label_visibility="collapsed"
+        )
+        
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">📝 주요 내용 요약</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        content_summary = st.text_area("", 
+            placeholder="보고서에 포함할 주요 사항들을 입력하세요...",
+            height=150,
+            label_visibility="collapsed"
+        )
+        
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">🎯 핵심 성과 및 지표</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        kpi = st.text_area("", 
+            placeholder="주요 지표, 수치, 목표 달성도 등을 입력하세요...",
+            height=120,
+            label_visibility="collapsed"
+        )
+        
+        if st.button("🤖 AI로 보고서 작성", use_container_width=True):
+            if report_title and content_summary:
+                st.info("💡 보고서 생성 중입니다. 잠시만 기다려주세요...")
+                
+                # 프로토타입: 자동 생성된 보고서 샘플
+                ai_generated_report = f"""
+## {report_title}
+
+### 1. 개요
+{report_type}로 제시되는 본 보고서는 주요 성과와 향후 개선 방향을 담고 있습니다.
+
+### 2. 주요 내용
+{content_summary}
+
+### 3. 핵심 성과 지표
+{kpi}
+
+### 4. 결론 및 향후 계획
+- 지속적인 개선을 통한 성과 극대화
+- 팀 역량 강화 및 협업 확대
+- 다음 기간 목표 설정 및 실행 계획 수립
+
+---
+*본 보고서는 AI Assistant에 의해 자동 생성되었습니다. 내용 검토 후 필요시 수정하시기 바랍니다.*
+"""
+                
+                st.success("✅ 보고서가 생성되었습니다!")
+                st.markdown(ai_generated_report)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.download_button(
+                        label="📥 마크다운 다운로드",
+                        data=ai_generated_report,
+                        file_name=f"{report_title}.md",
+                        mime="text/markdown"
+                    )
+                with col2:
+                    st.button("✏️ 편집 모드")
+                with col3:
+                    st.button("🔄 다시 생성")
+            else:
+                st.warning("⚠️ 보고서 제목과 주요 내용을 입력해주세요.")
+    
     with col2:
-        st.info("💡 **시작 가이드**: PDF 파일을 업로드하면 채팅창이 활성화됩니다.")
+        st.markdown(
+            """
+            <div class="status-card">
+                <h3 style="margin-top:0;">💡 팁</h3>
+                <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 10px;">자세한 정보를 입력할수록 더 정확한 보고서가 생성됩니다.</p>
+                <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">
+                    <b>지원 형식:</b><br>
+                    • 프로젝트 보고서<br>
+                    • 성과 보고서<br>
+                    • 분석 보고서<br>
+                    • 재정 보고서<br>
+                    • 월간 보고서
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+# ---------------------------
+# PAGE 3: 이메일 Assistant
+# ---------------------------
+elif st.session_state.current_page == "이메일 Assistant":
+    
+    st.markdown(
+        """
+        <div class="main-center">
+            <div style="font-size: 4rem;">✉️</div>
+            <h1 class="main-title">이메일 Assistant</h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">📧 이메일 목적</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        email_purpose = st.selectbox("",
+            ["정보 공유", "회의 요청", "프로젝트 제안", "상태 보고", "협업 요청", "기타"],
+            label_visibility="collapsed"
+        )
+        
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">👥 수신자</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        recipient = st.text_input("", placeholder="예: 팀장, 마케팅팀", label_visibility="collapsed")
+        
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">✏️ 이메일 요약</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        email_content = st.text_area("",
+            placeholder="이메일에 포함할 주요 내용을 입력하세요...",
+            height=150,
+            label_visibility="collapsed"
+        )
+        
+        st.markdown(
+            """
+            <div class="input-form">
+                <div class="form-section">
+                    <p class="form-label">🎨 톤 & 스타일</p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        tone = st.selectbox("",
+            ["격식적", "친근한", "긴급", "정중한", "캐주얼"],
+            label_visibility="collapsed"
+        )
+        
+        if st.button("✨ AI로 이메일 작성", use_container_width=True):
+            if recipient and email_content:
+                st.info("💡 이메일 생성 중입니다. 잠시만 기다려주세요...")
+                
+                # 프로토타입: 자동 생성된 이메일 샘플
+                tone_greeting = {
+                    "격식적": "안녕하세요",
+                    "친근한": "안녕하세요",
+                    "긴급": "긴급",
+                    "정중한": "존경하는",
+                    "캐주얼": "안녕"
+                }
+                
+                tone_closing = {
+                    "격식적": "감사합니다.\n\n존경합니다.",
+                    "친근한": "감사합니다!\n\n즐거운 하루 보내세요!",
+                    "긴급": "빠른 회신 부탁드립니다.\n\n감사합니다.",
+                    "정중한": "자세한 회신을 기대합니다.\n\n감사합니다.",
+                    "캐주얼": "고마워요!\n\n곧 봐요!"
+                }
+                
+                ai_generated_email = f"""
+**[제목]** {email_purpose} - {recipient}께 드리는 메시지
+
+---
+
+{tone_greeting[tone]} {recipient}님,
+
+{email_content}
+
+이 사항에 대해 귀하의 의견과 피드백을 부탁드립니다.
+
+{tone_closing[tone]}
+"""
+                
+                st.success("✅ 이메일이 작성되었습니다!")
+                st.markdown(ai_generated_email)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.download_button(
+                        label="📥 텍스트 다운로드",
+                        data=ai_generated_email,
+                        file_name=f"email_{email_purpose}.txt",
+                        mime="text/plain"
+                    )
+                with col2:
+                    st.button("✏️ 편집")
+                with col3:
+                    st.button("🔄 다시 작성")
+            else:
+                st.warning("⚠️ 수신자와 이메일 내용을 입력해주세요.")
+    
+    with col2:
+        st.markdown(
+            """
+            <div class="status-card">
+                <h3 style="margin-top:0;">💡 팁</h3>
+                <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 10px;">상황과 톤에 맞는 이메일을 AI가 작성해드립니다.</p>
+                <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">
+                    <b>지원 목적:</b><br>
+                    • 정보 공유<br>
+                    • 회의 요청<br>
+                    • 프로젝트 제안<br>
+                    • 상태 보고<br>
+                    • 협업 요청
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
