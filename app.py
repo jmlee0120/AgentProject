@@ -2,7 +2,14 @@ import streamlit as st
 import os
 import shutil
 import hashlib
-from rag_module import create_rag_chain, query_expansion, add_confidence_score
+import asyncio
+from rag_module import (
+    create_rag_chain,
+    query_expansion,
+    add_confidence_score,
+    retrieve_docs_for_queries,
+    format_docs_with_pages,
+)
 
 # ---------------------------
 # Page Config
@@ -239,6 +246,19 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # ---------------------------
 # Session State 초기화
 # ---------------------------
+def run_async(coro):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    else:
+        new_loop = asyncio.new_event_loop()
+        try:
+            return new_loop.run_until_complete(coro)
+        finally:
+            new_loop.close()
+
+
 if "current_page" not in st.session_state:
     st.session_state.current_page = "문서 챗봇"
 
@@ -379,7 +399,9 @@ if st.session_state.current_page == "문서 챗봇":
         # RAG Chain 생성 (새 파일이거나 rag_chain이 없을 때)
         if "rag_chain" not in st.session_state:
             with st.status("🚀 AI가 지식 베이스를 생성하고 있습니다...", expanded=True) as status:
-                st.session_state.rag_chain = create_rag_chain(temp_path)
+                rag_chain, retriever = create_rag_chain(temp_path)
+                st.session_state.rag_chain = rag_chain
+                st.session_state.retriever = retriever
                 status.update(label="준비 완료! 질문을 입력하세요.", state="complete", expanded=False)
             
             # 새 파일 로드 시 알림
@@ -408,8 +430,16 @@ if st.session_state.current_page == "문서 챗봇":
                     if st.session_state.enable_query_expansion:
                         with st.spinner("다양한 관점에서 검색 중..."):
                             expanded_queries = query_expansion(prompt)
-                            # 최초 쿼리로 답변 생성
-                            response = st.session_state.rag_chain.invoke(prompt)
+                            docs = run_async(
+                                retrieve_docs_for_queries(
+                                    st.session_state.retriever,
+                                    expanded_queries,
+                                )
+                            )
+                            combined_context = format_docs_with_pages(docs)
+                            response = st.session_state.rag_chain.invoke(
+                                {"question": prompt, "context": combined_context}
+                            )
                     else:
                         response = st.session_state.rag_chain.invoke(prompt)
                     

@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 
 from langchain_community.document_loaders import PyMuPDFLoader
@@ -26,6 +27,42 @@ RETRIEVER_LAMBDA = 0.6  # 유사도 vs 다양성 균형 조정 (더 높은 유�
 MODEL_NAME = "gpt-4o"
 TEMPERATURE = 0.1  # 약간의 창의성으로 자연스러운 한국어 표현
 # =========================
+
+
+def format_docs_with_pages(docs_list):
+    blocks = []
+    for d in docs_list:
+        page = d.metadata.get("page", None)
+        # 사람이 보기 좋게 1부터 표기
+        page_str = f"{page + 1}" if isinstance(page, int) else "?"
+        text = (d.page_content or "").strip()
+        if not text:
+            continue
+        blocks.append(f"[p.{page_str}]\n{text}")
+    return "\n\n---\n\n".join(blocks)
+
+
+async def retrieve_docs_for_queries(retriever, queries: list[str]) -> list:
+    async def _retrieve(query: str):
+        if hasattr(retriever, "ainvoke"):
+            return await retriever.ainvoke(query)
+        if hasattr(retriever, "aget_relevant_documents"):
+            return await retriever.aget_relevant_documents(query)
+        return await asyncio.to_thread(retriever.get_relevant_documents, query)
+
+    tasks = [_retrieve(q) for q in queries]
+    results = await asyncio.gather(*tasks)
+
+    seen = set()
+    merged = []
+    for docs in results:
+        for d in docs:
+            key = (d.metadata.get("source"), d.metadata.get("page"), d.page_content)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(d)
+    return merged
 
 
 def create_rag_chain(pdf_path: str):
@@ -60,22 +97,58 @@ def create_rag_chain(pdf_path: str):
     llm = ChatOpenAI(model_name=MODEL_NAME, temperature=TEMPERATURE)
 
     # -------------------------
-    # 컨텍스트 포맷팅(페이지 표기 포함)
+    # 컨텍스트 포맷팅(페이지 표기 포함) & Rerank 적용
     # -------------------------
-    def format_docs(docs_list):
-        blocks = []
-        for d in docs_list:
-            page = d.metadata.get("page", None)
-            # 사람이 보기 좋게 1부터 표기
-            page_str = f"{page + 1}" if isinstance(page, int) else "?"
-            text = (d.page_content or "").strip()
-            if not text:
-                continue
-            blocks.append(f"[p.{page_str}]\n{text}")
-        return "\n\n---\n\n".join(blocks)
+    def extract_question(inp):
+        if isinstance(inp, dict):
+            return inp.get("question", "")
+        return inp
 
-    format_docs_runnable = RunnableLambda(format_docs)
-    context_chain = retriever | format_docs_runnable
+    def has_context(inp):
+        return isinstance(inp, dict) and inp.get("context") is not None
+
+    def extract_context(inp):
+        return inp.get("context", "")
+
+    # Rerank를 적용하는 함수
+    def rerank_and_format(inp):
+        """검색된 문서를 rerank한 후 포맷팅"""
+        if isinstance(inp, dict):
+            query = inp.get("question", "")
+            docs = inp.get("docs", [])
+        else:
+            # inp가 문서 리스트인 경우
+            query = ""
+            docs = inp if isinstance(inp, list) else []
+        
+        if docs and query:
+            # rerank 적용
+            reranked_docs = rerank_results(query, docs, llm)
+            return format_docs_with_pages(reranked_docs)
+        return format_docs_with_pages(docs)
+
+    question_selector = RunnableLambda(extract_question)
+    format_docs_runnable = RunnableLambda(format_docs_with_pages)
+    
+    # 검색 후 rerank를 거치는 체인
+    def retrieve_with_rerank(inp):
+        """질문을 받아 retriever로 검색하고 rerank 적용"""
+        query = extract_question(inp)
+        if hasattr(retriever, "invoke"):
+            docs = retriever.invoke(query)
+        else:
+            docs = retriever.get_relevant_documents(query)
+        
+        # rerank 적용
+        reranked_docs = rerank_results(query, docs, llm)
+        return format_docs_with_pages(reranked_docs)
+    
+    retriever_with_rerank = RunnableLambda(retrieve_with_rerank)
+    context_chain = question_selector | retriever_with_rerank
+    context_selector = RunnableBranch(
+        (has_context, RunnableLambda(extract_context)),
+        context_chain,
+    )
 
     
     # 1) QA 프롬프트 (문서 근거 기반)
@@ -121,7 +194,7 @@ def create_rag_chain(pdf_path: str):
     qa_prompt = ChatPromptTemplate.from_template(qa_template)
 
     qa_chain = (
-        {"context": context_chain, "question": RunnablePassthrough()}
+        {"context": context_selector, "question": question_selector}
         | qa_prompt
         | llm
         | StrOutputParser()
@@ -161,7 +234,7 @@ def create_rag_chain(pdf_path: str):
     summary_prompt = ChatPromptTemplate.from_template(summary_template)
 
     summary_chain = (
-        {"context": context_chain, "question": RunnablePassthrough()}
+        {"context": context_selector, "question": question_selector}
         | summary_prompt
         | llm
         | StrOutputParser()
@@ -224,8 +297,9 @@ def create_rag_chain(pdf_path: str):
     SUMMARY_HINTS = ("요약", "정리", "보고", "리포트", "개요", "핵심", "전반", "전체", "구조", "목차")
     PAGEWISE_HINTS = ("페이지별", "page by page", "페이지 단위", "쪽별", "p별")
 
-    def route(question: str) -> str:
-        q = (question or "").strip().lower()
+    def route(question_or_input) -> str:
+        q = extract_question(question_or_input)
+        q = (q or "").strip().lower()
         if any(k in q for k in PAGEWISE_HINTS):
             return "pagewise"
         if any(k in q for k in SUMMARY_HINTS):
@@ -244,10 +318,10 @@ def create_rag_chain(pdf_path: str):
         qa_chain,  # default
     )
 
-    return rag_chain
+    return rag_chain, retriever
 
 # =========================
-# 추가 유틸리티 함수 (v2.3+)
+# 추가 유틸리티 함수
 # =========================
 
 def query_expansion(query: str) -> list[str]:
