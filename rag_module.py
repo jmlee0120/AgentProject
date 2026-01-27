@@ -1,6 +1,10 @@
 import os
 import asyncio
+import re
+from hashlib import md5
 from dotenv import load_dotenv
+from rank_bm25 import BM25Okapi
+from langchain_core.documents import Document
 
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -24,6 +28,13 @@ RETRIEVER_K = 10  # 최종적으로 LLM에 넣을 청크 개수 (더 풍부한 �
 RETRIEVER_FETCH_K = 60  # 후보로 더 많이 뽑아놓고 그중에서 다양하게 고르는 폭
 RETRIEVER_LAMBDA = 0.6  # 유사도 vs 다양성 균형 조정 (더 높은 유사도 비중)
 
+# 하이브리드 검색 가중치
+VECTOR_WEIGHT = 0.7  # 벡터 기반 검색 가중치
+BM25_WEIGHT = 0.3    # BM25 기반 검색 가중치
+
+# BM25 파라미터
+BM25_SCORE_THRESHOLD = 0.5  # BM25 점수 임계값 (0 이상만 반환)
+
 MODEL_NAME = "gpt-4o"
 TEMPERATURE = 0.1  # 약간의 창의성으로 자연스러운 한국어 표현
 # =========================
@@ -40,6 +51,186 @@ def format_docs_with_pages(docs_list):
             continue
         blocks.append(f"[p.{page_str}]\n{text}")
     return "\n\n---\n\n".join(blocks)
+
+
+# =========================
+# BM25 기반 검색기
+# =========================
+class BM25Retriever:
+    """
+    BM25 알고리즘을 사용한 키워드 기반 검색기
+    개선된 토큰화: 한글/영문/숫자 정규화
+    """
+    
+    @staticmethod
+    def tokenize(text: str) -> list[str]:
+        """
+        개선된 토큰화: 정규식 기반 (한글/영문/숫자 모두 지원)
+        
+        Args:
+            text: 토큰화할 텍스트
+        
+        Returns:
+            토큰 리스트
+        """
+        # \w는 유니코드 기반으로 한글, 영문, 숫자, _를 모두 포함
+        tokens = re.findall(r'\w+', text.lower())
+        # 1글자 토큰 제거 (의미 없는 단문자)
+        return [t for t in tokens if len(t) > 1]
+    
+    def __init__(self, documents: list[Document]):
+        """
+        문서 리스트로부터 BM25 인덱스 생성
+        
+        Args:
+            documents: LangChain Document 객체의 리스트
+        """
+        self.documents = documents
+        # 개선된 토큰화 적용
+        self.corpus = [self.tokenize(doc.page_content) for doc in documents]
+        self.bm25 = BM25Okapi(self.corpus)
+    
+    def retrieve(self, query: str, k: int = 10) -> list[Document]:
+        """
+        BM25를 사용하여 쿼리와 유사한 문서들을 검색
+        
+        Args:
+            query: 검색 쿼리
+            k: 반환할 상위 문서 개수
+        
+        Returns:
+            유사도가 높은 Document 객체의 리스트
+        """
+        # 쿼리도 동일한 토큰화 적용
+        query_tokens = self.tokenize(query)
+        scores = self.bm25.get_scores(query_tokens)
+        
+        # 상위 k개의 인덱스를 점수와 함께 가져오기
+        top_indices = sorted(
+            range(len(scores)), 
+            key=lambda i: scores[i], 
+            reverse=True
+        )[:k]
+        
+        # 임계값 이상의 점수만 반환
+        return [self.documents[i] for i in top_indices if scores[i] > BM25_SCORE_THRESHOLD]
+
+
+# =========================
+# 하이브리드 검색기
+# =========================
+class HybridRetriever:
+    """
+    벡터 기반 검색(FAISS)과 BM25 기반 검색을 결합한 하이브리드 검색기
+    
+    점수 정규화 및 가중 합산을 통해 최적의 검색 결과를 제공합니다.
+    """
+    
+    @staticmethod
+    def _get_doc_key(doc: Document) -> tuple:
+        """
+        문서의 고유 키 생성 (정규화된 식별)
+        MD5 해시로 내용 기반 중복 제거
+        
+        Args:
+            doc: LangChain Document 객체
+        
+        Returns:
+            (source, page, content_hash) 튜플
+        """
+        # 처음 8자리만 사용 (충분한 고유성 + 성능)
+        content_hash = md5(doc.page_content.encode()).hexdigest()[:8]
+        return (
+            doc.metadata.get("source"),
+            doc.metadata.get("page"),
+            content_hash
+        )
+    
+    def __init__(
+        self, 
+        vectorstore_retriever,
+        bm25_retriever: BM25Retriever,
+        vector_weight: float = 0.7,
+        bm25_weight: float = 0.3,
+    ):
+        """
+        Args:
+            vectorstore_retriever: FAISS retriever (MMR 옵션 포함)
+            bm25_retriever: BM25Retriever 인스턴스
+            vector_weight: 벡터 검색의 가중치 (기본값: 0.7)
+            bm25_weight: BM25 검색의 가중치 (기본값: 0.3)
+        """
+        self.vectorstore_retriever = vectorstore_retriever
+        self.bm25_retriever = bm25_retriever
+        self.vector_weight = vector_weight
+        self.bm25_weight = bm25_weight
+    
+    def retrieve(self, query: str, k: int = 10) -> list[Document]:
+        """
+        하이브리드 검색: 벡터 검색과 BM25 검색의 결과를 가중 합산
+        
+        Args:
+            query: 검색 쿼리
+            k: 반환할 상위 문서 개수
+        
+        Returns:
+            하이브리드 검색 결과 (점수 기반 정렬)
+        """
+        # 1. 벡터 기반 검색 (MMR 적용)
+        try:
+            if hasattr(self.vectorstore_retriever, "invoke"):
+                vector_results = self.vectorstore_retriever.invoke(query)
+            else:
+                vector_results = self.vectorstore_retriever.get_relevant_documents(query)
+        except Exception as e:
+            print(f"Vector search error: {e}")
+            vector_results = []
+        
+        # 2. BM25 기반 검색
+        try:
+            bm25_results = self.bm25_retriever.retrieve(query, k=k)
+        except Exception as e:
+            print(f"BM25 search error: {e}")
+            bm25_results = []
+        
+        # 3. 결과 병합 및 점수 계산
+        doc_scores = {}  # {key: (doc, combined_score)}
+        
+        # 벡터 검색 결과 추가
+        for i, doc in enumerate(vector_results):
+            key = self._get_doc_key(doc)
+            # 벡터 검색 점수 정규화 (역순: 처음이 높음)
+            vector_score = (len(vector_results) - i) / len(vector_results) if vector_results else 0
+            doc_scores[key] = (doc, vector_score * self.vector_weight)
+        
+        # BM25 검색 결과 추가 (기존 결과가 있으면 가중치 합산)
+        for i, doc in enumerate(bm25_results):
+            key = self._get_doc_key(doc)
+            # BM25 검색 점수 정규화 (역순: 처음이 높음)
+            bm25_score = (len(bm25_results) - i) / len(bm25_results) if bm25_results else 0
+            
+            if key in doc_scores:
+                # 기존 점수가 있으면 합산 (두 검색 모두에서 찾아진 경우)
+                doc_scores[key] = (doc, doc_scores[key][1] + bm25_score * self.bm25_weight)
+            else:
+                doc_scores[key] = (doc, bm25_score * self.bm25_weight)
+        
+        # 4. 점수 기준으로 정렬 및 상위 k개 반환
+        sorted_results = sorted(
+            doc_scores.items(),
+            key=lambda x: x[1][1],
+            reverse=True
+        )
+        
+        return [doc for _, (doc, _) in sorted_results[:k]]
+    
+    async def ainvoke(self, query: str, k: int = 10) -> list[Document]:
+        """비동기 버전의 retrieve 메서드"""
+        return self.retrieve(query, k=k)
+    
+    def invoke(self, query: str, k: int = 10) -> list[Document]:
+        """RunnableLambda 호환 인터페이스"""
+        return self.retrieve(query, k=k)
 
 
 async def retrieve_docs_for_queries(retriever, queries: list[str]) -> list:
@@ -83,14 +274,25 @@ def create_rag_chain(pdf_path: str):
     embeddings = OpenAIEmbeddings()
     vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
 
-    # [5단계] 검색기(Retriever) 생성
-    retriever = vectorstore.as_retriever(
+    # [5단계] 검색기(Retriever) 생성 - 벡터 기반 (MMR 옵션 포함)
+    vector_retriever = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
             "k": RETRIEVER_K,
             "fetch_k": RETRIEVER_FETCH_K,
             "lambda_mult": RETRIEVER_LAMBDA,
         },
+    )
+
+    # [5-1단계] BM25 기반 검색기 생성
+    bm25_retriever = BM25Retriever(documents=split_documents)
+
+    # [5-2단계] 하이브리드 검색기 생성 (벡터 + BM25)
+    hybrid_retriever = HybridRetriever(
+        vectorstore_retriever=vector_retriever,
+        bm25_retriever=bm25_retriever,
+        vector_weight=VECTOR_WEIGHT,
+        bm25_weight=BM25_WEIGHT,
     )
 
     # [6~7단계] LLM
@@ -130,21 +332,25 @@ def create_rag_chain(pdf_path: str):
     question_selector = RunnableLambda(extract_question)
     format_docs_runnable = RunnableLambda(format_docs_with_pages)
     
-    # 검색 후 rerank를 거치는 체인
-    def retrieve_with_rerank(inp):
-        """질문을 받아 retriever로 검색하고 rerank 적용"""
+    # 하이브리드 검색 후 rerank를 거치는 체인
+    def retrieve_with_hybrid_and_rerank(inp):
+        """
+        질문을 받아 하이브리드 검색(벡터 + BM25)으로 검색하고 rerank 적용
+        벡터 검색의 MMR 옵션은 hybrid_retriever 내에서 자동으로 적용됨
+        """
         query = extract_question(inp)
-        if hasattr(retriever, "invoke"):
-            docs = retriever.invoke(query)
+        # 하이브리드 검색 (벡터 0.7 + BM25 0.3의 가중치로 결합)
+        if hasattr(hybrid_retriever, "invoke"):
+            docs = hybrid_retriever.invoke(query)
         else:
-            docs = retriever.get_relevant_documents(query)
+            docs = hybrid_retriever.retrieve(query)
         
         # rerank 적용
         reranked_docs = rerank_results(query, docs, llm)
         return format_docs_with_pages(reranked_docs)
     
-    retriever_with_rerank = RunnableLambda(retrieve_with_rerank)
-    context_chain = question_selector | retriever_with_rerank
+    retriever_with_hybrid_and_rerank = RunnableLambda(retrieve_with_hybrid_and_rerank)
+    context_chain = question_selector | retriever_with_hybrid_and_rerank
     context_selector = RunnableBranch(
         (has_context, RunnableLambda(extract_context)),
         context_chain,
@@ -318,7 +524,7 @@ def create_rag_chain(pdf_path: str):
         qa_chain,  # default
     )
 
-    return rag_chain, retriever
+    return rag_chain, hybrid_retriever
 
 # =========================
 # 추가 유틸리티 함수
