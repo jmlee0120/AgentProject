@@ -78,14 +78,36 @@ def email_automation_page():
                         if email.get('attachments'):
                             attachment_count = len(email['attachments'])
                             st.caption(f"📎 첨부 파일 {attachment_count}개")
+                            for att_idx, attachment in enumerate(email['attachments']):
+                                filename = attachment.get('filename', '알 수 없는 파일')
+                                size_kb = attachment.get('size', 0) / 1024
+                                st.write(f"📄 {filename} ({size_kb:.1f} KB)")
+                                st.download_button(
+                                    label="⬇️ 다운로드",
+                                    data=attachment.get('data', b''),
+                                    file_name=filename,
+                                    mime=attachment.get('content_type', None),
+                                    key=f"card_download_attachment_{idx}_{att_idx}"
+                                )
                         
                         st.caption(f"📅 {email['received_date']}")
                         with st.expander("📄 본문 미리보기"):
-                            # 개행 문자를 유지하면서 깔끔하게 표시
-                            preview_text = email['body'][:500]
-                            if len(email['body']) > 500:
-                                preview_text += "\n\n[... 더 있음]"
-                            st.text(preview_text)
+                            preview_text = email.get('body_summary') or email['body']
+                            preview_text = preview_text.replace('\n', '  \n')
+                            st.markdown(preview_text)
+                            if email.get('attachments'):
+                                st.markdown("### 📎 첨부 파일")
+                                for att_idx, attachment in enumerate(email['attachments']):
+                                    filename = attachment.get('filename', '알 수 없는 파일')
+                                    size_kb = attachment.get('size', 0) / 1024
+                                    st.write(f"📄 {filename} ({size_kb:.1f} KB)")
+                                    st.download_button(
+                                        label="⬇️ 다운로드",
+                                        data=attachment.get('data', b''),
+                                        file_name=filename,
+                                        mime=attachment.get('content_type', None),
+                                        key=f"preview_download_attachment_{idx}_{att_idx}"
+                                    )
                     
                     with col2:
                         if st.button("✏️ 답변하기", key=f"reply_{idx}", use_container_width=True):
@@ -119,7 +141,7 @@ def email_automation_page():
                 st.divider()
                 st.markdown("**본문:**")
                 # 마크다운으로 렌더링하되, 개행은 유지
-                body_text = email['body'].replace('\n', '  \n')  # Markdown에서 개행 유지
+                body_text = (email.get('body_summary') or email['body']).replace('\n', '  \n')
                 st.markdown(body_text)
             
             # 첨부 파일 표시
@@ -139,6 +161,7 @@ def email_automation_page():
                                 label="⬇️",
                                 data=attachment.get('data', b''),
                                 file_name=filename,
+                                mime=attachment.get('content_type', None),
                                 key=f"download_attachment_{idx}"
                             ):
                                 pass  # 다운로드 처리는 Streamlit에서 자동

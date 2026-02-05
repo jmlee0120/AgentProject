@@ -14,9 +14,12 @@ import smtplib
 import imaplib
 import sqlite3
 import re
+import html as html_module
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.parser import Parser
+from email.header import decode_header
+from email.utils import parseaddr
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
@@ -43,6 +46,7 @@ class Email(BaseModel):
     from_name: str = Field(description="발신자 이름")
     subject: str = Field(description="제목")
     body: str = Field(description="본문")
+    body_summary: Optional[str] = Field(description="본문 요약", default="")
     received_date: str = Field(description="수신 시간")
     is_reply: bool = Field(description="답변 여부", default=False)
     attachments: List[Dict[str, Any]] = Field(description="첨부 파일 목록", default_factory=list)
@@ -224,6 +228,7 @@ class IMAPEmailClient:
         self.password = password
         self.imap_server = imap_server
         self.connection = None
+        self.summary_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
 
     def connect(self) -> bool:
         """IMAP 서버 연결"""
@@ -275,8 +280,13 @@ class IMAPEmailClient:
                     from_name = self._parse_email_header(from_header)[0]
                     from_address = self._parse_email_header(from_header)[1]
                     
-                    subject = msg.get("Subject", "(제목 없음)")
-                    body = self._get_email_body(msg)
+                    subject = self._decode_header_value(msg.get("Subject", "(제목 없음)"))
+                    try:
+                        body, body_summary = self._get_email_body_and_summary(msg)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse/summarize body: {e}")
+                        body = ""
+                        body_summary = ""
                     attachments = self._get_email_attachments(msg)
                     received_date = msg.get("Date", "")
 
@@ -286,6 +296,7 @@ class IMAPEmailClient:
                         from_name=from_name,
                         subject=subject,
                         body=body,
+                        body_summary=body_summary,
                         received_date=received_date,
                         is_reply=False,
                         attachments=attachments
@@ -303,14 +314,26 @@ class IMAPEmailClient:
             return []
 
     @staticmethod
+    def _decode_header_value(value: str) -> str:
+        """인코딩된 이메일 헤더 값을 사람이 읽을 수 있게 디코딩"""
+        try:
+            decoded_parts = decode_header(value)
+            decoded_value = ""
+            for text, enc in decoded_parts:
+                if isinstance(text, bytes):
+                    decoded_value += text.decode(enc or "utf-8", errors="ignore")
+                else:
+                    decoded_value += text
+            return decoded_value
+        except Exception:
+            return value
+
+    @staticmethod
     def _parse_email_header(header: str) -> tuple:
-        """이메일 헤더에서 이름과 주소 추출"""
-        if "<" in header and ">" in header:
-            name = header.split("<")[0].strip().strip('"')
-            address = header.split("<")[1].split(">")[0].strip()
-            return name, address
-        else:
-            return "", header.strip()
+        """이메일 헤더에서 이름과 주소 추출 (인코딩 헤더 디코딩 포함)"""
+        name, address = parseaddr(header)
+        name = IMAPEmailClient._decode_header_value(name) if name else ""
+        return name.strip().strip('"'), address.strip()
 
     @staticmethod
     def _html_to_text(html: str) -> str:
@@ -340,9 +363,8 @@ class IMAPEmailClient:
         
         return text.strip()
 
-    @staticmethod
-    def _get_email_body(msg) -> str:
-        """이메일 본문 추출 (HTML 지원)"""
+    def _get_email_body_and_summary(self, msg) -> tuple:
+        """이메일 본문 추출 + 요약 생성 (HTML 지원)"""
         body = ""
         html_body = ""
         
@@ -381,8 +403,80 @@ class IMAPEmailClient:
         # text/plain이 없으면 HTML을 텍스트로 변환
         if not body and html_body:
             body = IMAPEmailClient._html_to_text(html_body)
-        
-        return body.strip()[:1000]  # 최대 1000자까지만
+
+        body = body.strip()
+        body_summary = self._summarize_body(body, html_body)
+        return body, body_summary
+
+    @staticmethod
+    def _extract_links_from_html(html: str) -> List[Dict[str, str]]:
+        links = []
+        for match in re.finditer(r'<a\s+[^>]*href=[\'"]([^\'"]+)[\'"][^>]*>(.*?)</a>', html, flags=re.IGNORECASE | re.DOTALL):
+            url = match.group(1).strip()
+            text = re.sub(r'<[^>]+>', '', match.group(2))
+            text = html_module.unescape(text).strip() or url
+            if url:
+                links.append({"text": text, "url": url})
+        return links
+
+    @staticmethod
+    def _extract_links_from_text(text: str) -> List[Dict[str, str]]:
+        links = []
+        for match in re.finditer(r'(https?://[^\s)]+)', text):
+            url = match.group(1).rstrip(').,]>')
+            links.append({"text": url, "url": url})
+        return links
+
+    @staticmethod
+    def _dedupe_links(links: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        seen = set()
+        result = []
+        for link in links:
+            url = link.get("url", "")
+            if url and url not in seen:
+                seen.add(url)
+                result.append(link)
+        return result
+
+    def _summarize_body(self, body_text: str, html_body: str) -> str:
+        """LLM으로 본문 요약 + 링크 목록 유지"""
+        if not body_text:
+            return ""
+
+        links = self._extract_links_from_html(html_body) if html_body else self._extract_links_from_text(body_text)
+        links = self._dedupe_links(links)
+
+        trimmed_text = re.sub(r'\s+', ' ', body_text).strip()
+        if len(trimmed_text) > 4000:
+            trimmed_text = trimmed_text[:4000]
+
+        prompt = ChatPromptTemplate.from_template("""
+다음 이메일 본문을 한국어로 간결하게 요약하세요.
+- 이미지/서명/푸터/광고는 제외
+- 핵심 내용만 5~7문장으로
+- 900자 이내
+
+본문:
+{body}
+
+요약만 출력:
+""")
+
+        try:
+            chain = prompt | self.summary_llm
+            response = chain.invoke({"body": trimmed_text})
+            summary = response.content.strip()
+        except Exception as e:
+            logger.error(f"Failed to summarize email body: {e}")
+            summary = trimmed_text[:900]
+
+        if links:
+            link_lines = ["\n링크:"]
+            for link in links:
+                link_lines.append(f"- [{link['text']}]({link['url']})")
+            summary = summary.rstrip() + "\n" + "\n".join(link_lines)
+
+        return summary
 
     @staticmethod
     def _get_email_attachments(msg) -> List[Dict[str, Any]]:
@@ -393,16 +487,26 @@ class IMAPEmailClient:
             return attachments
         
         for part in msg.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
             # Content-Disposition 헤더 확인 (attachment 여부)
-            if part.get_content_disposition() == "attachment":
+            disposition = part.get_content_disposition()
+            filename = part.get_filename()
+            if disposition in ("attachment", "inline") or filename:
                 try:
-                    filename = part.get_filename()
                     if filename:
                         # 한글 파일명 디코딩
                         if isinstance(filename, str):
                             # header.decode() 시도 (인코딩된 경우)
                             try:
-                                filename = filename.encode('latin1').decode('utf-8')
+                                decoded_parts = decode_header(filename)
+                                decoded_filename = ""
+                                for text, enc in decoded_parts:
+                                    if isinstance(text, bytes):
+                                        decoded_filename += text.decode(enc or "utf-8", errors="ignore")
+                                    else:
+                                        decoded_filename += text
+                                filename = decoded_filename
                             except (UnicodeDecodeError, UnicodeEncodeError):
                                 pass
                         
