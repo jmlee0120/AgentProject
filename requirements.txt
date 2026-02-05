@@ -1,16 +1,25 @@
 python-dotenv
 faiss-cpu
 pymupdf
+pdfplumber
+python-docx
 langchain-community
 langchain-openai
 langchain-core
 streamlit
 rank-bm25
+reportlab
 
 # 성능 최적화 및 추가 기능
 langchain>=0.2.0
 openai>=1.0.0
 numpy>=1.24.0
+Pillow>=10.0.0
+
+# 이메일 자동화 관련
+mcp>=0.1.0
+pydantic>=2.0.0
+sqlalchemy>=2.0.0
 
 # 선택사항: GPU 가속 (CUDA 설치시)
 # faiss-gpu  # faiss-cpu 대신 사용 가능

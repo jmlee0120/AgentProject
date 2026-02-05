@@ -3,6 +3,10 @@ import os
 import shutil
 import hashlib
 import asyncio
+import json
+from datetime import datetime
+from email_mcp_server import EmailMCPServer
+from email_ui import email_automation_page
 from rag_module import (
     create_rag_chain,
     query_expansion,
@@ -286,13 +290,13 @@ with col2:
     )
 
 # 페이지 선택 버튼
-pages = ["문서 챗봇", "보고서 작성기", "이메일 Assistant"]
+pages = ["문서 챗봇", "보고서 작성기", "📧 이메일 자동화"]
 page_cols = st.columns(3)
 
 for idx, page in enumerate(pages):
     with page_cols[idx]:
         if st.button(
-            f"{'📄 ' if page == '문서 챗봇' else '📝 ' if page == '보고서 작성기' else '✉️ '}{page}",
+            f"{'📄 ' if page == '문서 챗봇' else '📝 ' if page == '보고서 작성기' else '📧 '}{page}",
             use_container_width=True,
             key=f"page_btn_{page}"
         ):
@@ -631,149 +635,5 @@ elif st.session_state.current_page == "보고서 작성기":
 # ---------------------------
 # PAGE 3: 이메일 Assistant
 # ---------------------------
-elif st.session_state.current_page == "이메일 Assistant":
-    
-    st.markdown(
-        """
-        <div class="main-center">
-            <div style="font-size: 4rem;">✉️</div>
-            <h1 class="main-title">이메일 Assistant</h1>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    
-    st.markdown("---")
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        st.markdown(
-            """
-            <div class="input-form">
-                <div class="form-section">
-                    <p class="form-label">📧 이메일 목적</p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        email_purpose = st.selectbox("",
-            ["정보 공유", "회의 요청", "프로젝트 제안", "상태 보고", "협업 요청", "기타"],
-            label_visibility="collapsed"
-        )
-        
-        st.markdown(
-            """
-            <div class="input-form">
-                <div class="form-section">
-                    <p class="form-label">👥 수신자</p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        recipient = st.text_input("", placeholder="예: 팀장, 마케팅팀", label_visibility="collapsed")
-        
-        st.markdown(
-            """
-            <div class="input-form">
-                <div class="form-section">
-                    <p class="form-label">✏️ 이메일 요약</p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        email_content = st.text_area("",
-            placeholder="이메일에 포함할 주요 내용을 입력하세요...",
-            height=150,
-            label_visibility="collapsed"
-        )
-        
-        st.markdown(
-            """
-            <div class="input-form">
-                <div class="form-section">
-                    <p class="form-label">🎨 톤 & 스타일</p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        tone = st.selectbox("",
-            ["격식적", "친근한", "긴급", "정중한", "캐주얼"],
-            label_visibility="collapsed"
-        )
-        
-        if st.button("✨ AI로 이메일 작성", use_container_width=True):
-            if recipient and email_content:
-                st.info("💡 이메일 생성 중입니다. 잠시만 기다려주세요...")
-                
-                # 프로토타입: 자동 생성된 이메일 샘플
-                tone_greeting = {
-                    "격식적": "안녕하세요",
-                    "친근한": "안녕하세요",
-                    "긴급": "긴급",
-                    "정중한": "존경하는",
-                    "캐주얼": "안녕"
-                }
-                
-                tone_closing = {
-                    "격식적": "감사합니다.\n\n존경합니다.",
-                    "친근한": "감사합니다!\n\n즐거운 하루 보내세요!",
-                    "긴급": "빠른 회신 부탁드립니다.\n\n감사합니다.",
-                    "정중한": "자세한 회신을 기대합니다.\n\n감사합니다.",
-                    "캐주얼": "고마워요!\n\n곧 봐요!"
-                }
-                
-                ai_generated_email = f"""
-**[제목]** {email_purpose} - {recipient}께 드리는 메시지
-
----
-
-{tone_greeting[tone]} {recipient}님,
-
-{email_content}
-
-이 사항에 대해 귀하의 의견과 피드백을 부탁드립니다.
-
-{tone_closing[tone]}
-"""
-                
-                st.success("✅ 이메일이 작성되었습니다!")
-                st.markdown(ai_generated_email)
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.download_button(
-                        label="📥 텍스트 다운로드",
-                        data=ai_generated_email,
-                        file_name=f"email_{email_purpose}.txt",
-                        mime="text/plain"
-                    )
-                with col2:
-                    st.button("✏️ 편집")
-                with col3:
-                    st.button("🔄 다시 작성")
-            else:
-                st.warning("⚠️ 수신자와 이메일 내용을 입력해주세요.")
-    
-    with col2:
-        st.markdown(
-            """
-            <div class="status-card">
-                <h3 style="margin-top:0;">💡 팁</h3>
-                <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 10px;">상황과 톤에 맞는 이메일을 AI가 작성해드립니다.</p>
-                <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">
-                    <b>지원 목적:</b><br>
-                    • 정보 공유<br>
-                    • 회의 요청<br>
-                    • 프로젝트 제안<br>
-                    • 상태 보고<br>
-                    • 협업 요청
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+elif st.session_state.current_page == "📧 이메일 자동화":
+    email_automation_page()
